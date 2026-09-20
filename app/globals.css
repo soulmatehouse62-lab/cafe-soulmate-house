@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: var(--font-display-serif), ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+@theme {
+  /* Crema — paper & surfaces */
+  --color-cream-50: #fcf8f2;
+  --color-cream-100: #f6ecdf;
+  --color-cream-200: #ecdcc6;
+  --color-cream-300: #dfc6a5;
+
+  /* Roast — text & dark surfaces */
+  --color-espresso-300: #c4a184;
+  --color-espresso-400: #a07252;
+  --color-espresso-500: #83573a;
+  --color-espresso-600: #6a4229;
+  --color-espresso-700: #50301d;
+  --color-espresso-800: #3a2215;
+  --color-espresso-900: #24150d;
+
+  /* Accents */
+  --color-caramel-300: #efc48f;
+  --color-caramel-400: #e3a35a;
+  --color-caramel-500: #d08636;
+  --color-caramel-600: #ad6a22;
+  --color-terracotta-500: #c2583a;
+  --color-matcha-500: #5f7f3f;
+  --color-berry-500: #a8456b;
+
+  --shadow-card: 0 1px 0 rgb(36 21 13 / 0.04), 0 8px 24px -12px rgb(36 21 13 / 0.18);
+  --shadow-lift: 0 2px 0 rgb(36 21 13 / 0.05), 0 18px 40px -16px rgb(36 21 13 / 0.35);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Crema paper with a faint coffee-grain speckle and a warm glow at the top */
+body {
+  background-color: var(--color-cream-50);
+  background-image:
+    radial-gradient(1200px 380px at 50% -120px, rgb(227 163 90 / 0.18), transparent 70%),
+    radial-gradient(rgb(80 48 29 / 0.07) 0.8px, transparent 0.9px);
+  background-size: 100% 100%, 14px 14px;
+  background-attachment: fixed, scroll;
+  color: var(--color-espresso-900);
+}
+
+.font-display {
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 60, "WONK" 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Dark roast surface with a subtle bean pattern (header, hero) */
+.roast-surface {
+  background-color: var(--color-espresso-800);
+  background-image:
+    radial-gradient(circle at 20% 0%, rgb(208 134 54 / 0.28), transparent 45%),
+    radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1.2px);
+  background-size: 100% 100%, 16px 16px;
+}
+
+/* Paper receipt: torn zigzag edge on the bottom (and top with .receipt-both) */
+.receipt {
+  --tooth: 10px;
+  position: relative;
+  background: #fffdf9;
+  -webkit-mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--tooth) 51% repeat-x,
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth) / 2) no-repeat;
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--tooth) 51% repeat-x,
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth) / 2) no-repeat;
+  padding-bottom: calc(var(--tooth) + 0.75rem);
+}
+
+.receipt-rule {
+  border-top: 1.5px dashed var(--color-cream-300);
+}
+
+/* Rubber stamp on bills */
+.stamp {
+  display: inline-block;
+  transform: rotate(-8deg);
+  border: 3px double currentColor;
+  border-radius: 10px;
+  padding: 0.2rem 0.8rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  mix-blend-mode: multiply;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-pop {
+  animation: pop 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop {
+    animation: none;
+  }
+}
+
+@media print {
+  @page {
+    margin: 4mm;
+  }
+  body {
+    background: #fff;
+  }
+  .receipt {
+    -webkit-mask: none;
+    mask: none;
+    box-shadow: none !important;
+  }
+}

@@ -1,0 +1,200 @@
+// Soulmate House Cafe — order & payment management (MongoDB)
+//
+// All money fields are integers in PAISE (₹1 = 100 paise) so arithmetic is exact.
+// Timestamps are stored as UTC BSON dates; the app reports in Asia/Kolkata.
+//
+// MongoDB has no migrations: apply indexes with `npx prisma db push`.
+// Prisma needs MongoDB to run as a replica set (MongoDB Atlas always does).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+}
+
+enum DiscountType {
+  FLAT
+  PERCENT
+}
+
+/// A size of a menu item, e.g. { name: "Medium", price: 16000 }
+type MenuVariant {
+  name  String
+  /// paise
+  price Int
+}
+
+model MenuItem {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  /// paise — the single price, or the lowest size price when the item has sizes
+  price       Int
+  /// Optional sizes (e.g. Medium / Large for drinks). Empty = one fixed price.
+  variants    MenuVariant[]
+  category    String
+  isAvailable Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orderItems  OrderItem[]
+
+  @@index([category])
+}
+
+model Order {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  /// Human-readable sequential bill number (#0001, #0002, ...), issued from Counter "order"
+  orderNumber    Int           @unique
+  customerName   String?
+  customerPhone  String?
+  /// Last 10 digits of customerPhone — exact-match key for returning-customer lookups
+  phoneKey       String?
+  tableNumber    String?
+  /// paise — sum of line totals
+  subtotal       Int
+  discountType   DiscountType?
+  /// Raw discount input: rupees when FLAT, percent when PERCENT
+  discountValue  Float?
+  /// paise — discount actually applied (clamped to subtotal)
+  discountAmount Int           @default(0)
+  /// paise — subtotal - discountAmount
+  total          Int
+  /// paise — always equals SUM(Payment.amount); maintained transactionally
+  amountPaid     Int           @default(0)
+  /// paise — total - amountPaid
+  balanceDue     Int
+  status         OrderStatus   @default(UNPAID)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          OrderItem[]
+  payments       Payment[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([balanceDue])
+  @@index([customerPhone])
+  @@index([phoneKey])
+}
+
+model OrderItem {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  orderId     String    @db.ObjectId
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Nullable: deleting a menu item keeps the historical line (snapshot below)
+  menuItemId  String?   @db.ObjectId
+  menuItem    MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  itemName    String
+  /// Size chosen (snapshot), e.g. "Large"; null for items without sizes
+  variantName String?
+  category    String
+  /// paise, snapshot at time of order
+  unitPrice   Int
+  quantity    Int
+  /// paise
+  lineTotal   Int
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+model Payment {
+  id      String        @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String        @db.ObjectId
+  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// paise
+  amount  Int
+  method  PaymentMethod
+  paidAt  DateTime      @default(now())
+
+  @@index([orderId])
+  @@index([paidAt])
+}
+
+/// Named sequences (MongoDB has no autoincrement). { _id: "order", seq: <last issued number> }
+model Counter {
+  id  String @id @map("_id")
+  seq Int
+}
+
+/// One row per phone number, kept up to date whenever an order is saved. Powers the fast
+/// name / phone suggestions on the order screen without scanning every order.
+model Customer {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  /// Last 10 digits of the phone number
+  phoneKey    String   @unique
+  /// Phone as last entered, e.g. "9784625778" or "+919784625778"
+  phone       String
+  /// Latest name used with this phone
+  name        String
+  /// Lowercased words of the name — indexed, so prefix search on any word is fast
+  nameWords   String[]
+  lastVisitAt DateTime
+
+  @@index([nameWords])
+  @@index([lastVisitAt])
+}
+
+// ─── Authentication ──────────────────────────────────────────────────────────
+
+enum Role {
+  /// Everything, plus menu changes, deleting orders/payments and managing staff
+  ADMIN
+  /// Take orders, record payments, view dues / history / analytics
+  STAFF
+}
+
+model User {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  /// Lowercase, unique login name
+  username          String    @unique
+  name              String
+  /// scrypt hash — see lib/password.ts. Never sent to the browser.
+  passwordHash      String
+  role              Role      @default(STAFF)
+  /// Deactivated users cannot sign in and lose all sessions
+  isActive          Boolean   @default(true)
+  passwordChangedAt DateTime  @default(now())
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  sessions          Session[]
+}
+
+/// Server-side session. The cookie holds a random token; only its SHA-256 hash is stored,
+/// so a database leak does not expose usable sessions.
+model Session {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  tokenHash  String   @unique
+  userId     String   @db.ObjectId
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  /// Absolute expiry; idle expiry is checked against lastSeenAt
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  userAgent  String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Failed sign-in counter per username (brute-force protection). { _id: "user:<username>" }
+model LoginThrottle {
+  id          String    @id @map("_id")
+  failures    Int
+  windowStart DateTime
+  lockedUntil DateTime?
+}
